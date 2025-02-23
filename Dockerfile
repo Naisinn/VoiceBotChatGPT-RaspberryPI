@@ -31,7 +31,7 @@ RUN pip install --upgrade pip
 COPY requirements.txt .
 
 # 仮想環境内に requirements.txt のパッケージをインストール
-RUN pip install -r requirements.txt
+RUN pip install --break-system-packages -r requirements.txt
 
 # コンテナ起動時のデフォルトコマンド（必要に応じて変更）
 CMD ["python"]
