@@ -21,8 +21,8 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 # 仮想環境を作成し、以降のコマンドで使用するよう PATH を変更
-RUN python3 -m venv venv
-ENV PATH="/app/venv/bin:${PATH}"
+RUN python3 -m venv /venv
+ENV PATH="/venv/bin:${PATH}"
 
 # 仮想環境内で pip をアップグレード
 RUN pip install --upgrade pip
