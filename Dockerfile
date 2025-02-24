@@ -5,7 +5,7 @@ FROM debian:bookworm
 ENV DEBIAN_FRONTEND=noninteractive
 
 # 必要なシステムパッケージをインストール
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y\
     python3 \
     python3-pip \
     python3-dev \
@@ -16,6 +16,7 @@ RUN apt-get update && apt-get install -y \
     libsdl2-mixer-dev \
     libsdl2-ttf-dev \
     git \
+    alsa-utils \
     && rm -rf /var/lib/apt/lists/*
 
 # 作業ディレクトリを設定
