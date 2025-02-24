@@ -1,7 +1,7 @@
-# chat_gpt_service.py
+import asyncio
+asyncio.set_event_loop_policy(asyncio.DefaultEventLoopPolicy())
 
 import json
-import asyncio
 import websockets
 import openai
 import os
@@ -28,7 +28,9 @@ class ChatGPTService:
             "Authorization": f"Bearer {config['openai_key']}",
             "Content-Type": "application/json"
         }
-        self.ws = await websockets.connect(realtime_api_url, extra_headers=headers)
+        # extra_headers をリスト形式に変換して渡す
+        headers_list = list(headers.items())
+        self.ws = await websockets.connect(realtime_api_url, extra_headers=headers_list)
         print("Connected to Realtime API.")
 
     async def send_message(self, message, input_type="text"):
@@ -51,6 +53,8 @@ class ChatGPTService:
             return assistant_msg
 
     def send_to_chat_gpt(self, message, input_type="text"):
+        if self.ws is None:
+            asyncio.run(self.connect())
         # 同期版のラッパー。send_message() を asyncio.run() 経由で呼び出す
         return asyncio.run(self.send_message(message, input_type))
 

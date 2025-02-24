@@ -45,7 +45,8 @@ class WakeWordDetector:
                 )
             print("Transcript:", transcription)
             print("Sending to ChatGPT...")
-            response = self.chat_gpt_service.send_to_chat_gpt(transcription["text"])
+            # transcription はオブジェクトなので、属性 text を使用して文字列を取得
+            response = self.chat_gpt_service.send_to_chat_gpt(transcription.text)
             print("ChatGPT response:", response)
             print("Playing response...")
             self.speech.speak(response)
