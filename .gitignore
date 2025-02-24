@@ -166,3 +166,6 @@ local-notes.txt
 output.mp3
 
 /mycroft-precise/
+
+#音声ファイルを除外
+*.wav

@@ -5,13 +5,17 @@ from chat_gpt_service import ChatGPTService
 from input_listener import InputListener
 import os
 import openai
+from openai import OpenAI
 from silence_detector import ThresholdDetector
 # from precise_listener import PreciseListener  # Precise 関連は使用しないのでコメントアウト
 
 config = json.load(open("config.json"))
-openai.api_key = config["openai_key"]
+# クライアントインスタンスを生成（グローバル設定ではなくこちらを使用）
+client_instance = OpenAI(api_key=config["openai_key"])
+
 if "openai_org" in config:
-    openai.organization = config["openai_org"]
+    # 組織情報は新しいクライアントでは明示的に渡す必要がありますが、必要なければここは pass してください
+    pass
 
 class WakeWordDetector:
     def __init__(self):
@@ -34,11 +38,14 @@ class WakeWordDetector:
             audio_path = self.listener.listen()
             print("Transcribing...")
             with open(audio_path, "rb") as audio_file:
-                transcript = openai.Audio.translate("whisper-1", audio_file)
-            print("Transcript:", transcript)
+                # クライアントインスタンスを利用して音声文字起こしを実行
+                transcription = client_instance.audio.transcriptions.create(
+                    file=audio_file,
+                    model="whisper-1"
+                )
+            print("Transcript:", transcription)
             print("Sending to ChatGPT...")
-            # 既存の同期型呼び出しを利用（chat_gpt_service.py 側はRealtime API 実装のまま）
-            response = self.chat_gpt_service.send_to_chat_gpt(transcript["text"])
+            response = self.chat_gpt_service.send_to_chat_gpt(transcription["text"])
             print("ChatGPT response:", response)
             print("Playing response...")
             self.speech.speak(response)

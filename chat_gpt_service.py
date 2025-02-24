@@ -9,9 +9,10 @@ import time
 
 # 設定読み込み
 config = json.load(open("config.json"))
-openai.api_key = config["openai_key"]
 if "openai_org" in config:
-    openai.organization = config["openai_org"]
+    # TODO: The 'openai.organization' option isn't read in the client API. You will need to pass it when you instantiate the client, e.g. 'OpenAI(organization=config["openai_org"])'
+    # openai.organization = config["openai_org"]
+    pass
 
 class ChatGPTService:
     def __init__(self, prompt="You are a helpful assistant."):
@@ -48,6 +49,10 @@ class ChatGPTService:
             assistant_msg = response_json.get("choices", [{}])[0].get("message", {}).get("content", "")
             self.history.append({"role": "assistant", "content": assistant_msg})
             return assistant_msg
+
+    def send_to_chat_gpt(self, message, input_type="text"):
+        # 同期版のラッパー。send_message() を asyncio.run() 経由で呼び出す
+        return asyncio.run(self.send_message(message, input_type))
 
     async def close(self):
         if self.ws:
