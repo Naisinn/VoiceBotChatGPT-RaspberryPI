@@ -3,13 +3,10 @@
 import json
 from chat_gpt_service import ChatGPTService
 from input_listener import InputListener
-import pvporcupine
-import struct
 import os
-import pyaudio
 import openai
 from silence_detector import ThresholdDetector
-from tts_service import TextToSpeechService
+# from precise_listener import PreciseListener  # Precise 関連は使用しないのでコメントアウト
 
 config = json.load(open("config.json"))
 openai.api_key = config["openai_key"]
@@ -17,108 +14,41 @@ if "openai_org" in config:
     openai.organization = config["openai_org"]
 
 class WakeWordDetector:
-    def __init__(self, library_path, model_path, keyword_paths, silence_threshold):
+    def __init__(self):
+        # Picovoice/Precise は使用せず、キーボード入力でトリガーする実装に変更
         self.chat_gpt_service = ChatGPTService()
-        # load access key from config
-        pv_access_key = config["pv_access_key"]
-
-        self.silence_threshold = silence_threshold
-        self.handle = pvporcupine.create(
-            keywords=["picovoice"],
-            access_key=pv_access_key,
-            # library_path=library_path,
-            # model_path=model_path,
-            # keyword_paths=keyword_paths,
-            sensitivities=[1],
-        )
-
-        self.pa = pyaudio.PyAudio()
-        # init listener, use values from config or default
         self.listener = InputListener(
             config["silence_threshold"],
             config["silence_duration"]
         )
+        # Precise 関連の初期化は削除（またはコメントアウト）
 
-        # get from config, or default
-        sound_card_name = config["sound_card_name"] if "sound_card_name" in config else "seeed-2mic-voicecard"
-
-        # Find the device index of the sound card
-        print("Looking for sound card...")
-        for i in range(self.pa.get_device_count()):
-            device_info = self.pa.get_device_info_by_index(i)
-            print(device_info["name"]) 
-            if sound_card_name in device_info["name"]:
-                print("Found sound card! Using device index: %d" % i)
-                self.input_device_index = i
+    def run(self):
+        print("Precise wake word detection is disabled.")
+        print("Press Enter to start audio input (type 'exit' to quit).")
+        while True:
+            user_input = input(">> ")
+            if user_input.strip().lower() == "exit":
                 break
-        else:
-            raise Exception("Could not find sound device")
-
-        self.speech = TextToSpeechService()
-        self._init_audio_stream()
-
-        print("Listening for wake word...(say 'Picovoice') - silence threshold: %d" % self.silence_threshold)
-
-    def _init_audio_stream(self):
-        self.audio_stream = self.pa.open(
-            rate=self.handle.sample_rate,
-            channels=1,
-            format=pyaudio.paInt16,
-            input=True,
-            frames_per_buffer=self.handle.frame_length,
-        )
-        # input_device_index=self.input_device_index)
-
-    async def run(self):
-        # 非同期でRealtime APIに接続
-        await self.chat_gpt_service.connect()
-        try:
-            while True:
-                pcm = self.audio_stream.read(self.handle.frame_length)
-                pcm = struct.unpack_from("h" * self.handle.frame_length, pcm)
-                porcupine_keyword_index = self.handle.process(pcm)
-                if porcupine_keyword_index >= 0:
-                    print("Wake word detected!")
-                    self.audio_stream.close()
-                    self.audio_stream = None
-
-                    audio_path = self.listener.listen()
-                    print("Transcribing...")
-
-                    with open(audio_path, "rb") as audio_file:
-                        transcript = openai.Audio.translate("whisper-1", audio_file)
-                    print(transcript)
-
-                    print("Sending to chat GPT...")
-                    response = await self.chat_gpt_service.send_message(transcript["text"], input_type="text")
-                    print("ChatGPT response:", response)
-
-                    print("Playing response...")
-                    self.speech.speak(response)
-
-                    os.remove(audio_path)
-                    self._init_audio_stream()
-
-                    print("Listening for wake word...")
-        except KeyboardInterrupt:
-            pass
-        finally:
-            if self.audio_stream is not None:
-                self.audio_stream.close()
-            if self.pa is not None:
-                self.pa.terminate()
-            self.handle.delete()
-            await self.chat_gpt_service.close()
+            print("Starting audio recording...")
+            audio_path = self.listener.listen()
+            print("Transcribing...")
+            with open(audio_path, "rb") as audio_file:
+                transcript = openai.Audio.translate("whisper-1", audio_file)
+            print("Transcript:", transcript)
+            print("Sending to ChatGPT...")
+            # 既存の同期型呼び出しを利用（chat_gpt_service.py 側はRealtime API 実装のまま）
+            response = self.chat_gpt_service.send_to_chat_gpt(transcript["text"])
+            print("ChatGPT response:", response)
+            print("Playing response...")
+            self.speech.speak(response)
+            os.remove(audio_path)
+            print("Audio session completed. Press Enter to start again, or type 'exit' to quit.")
 
 if __name__ == "__main__":
-    import asyncio
-    # サンプルの閾値検出（ThresholdDetector を利用）
+    # オプション：silence_detector により環境の無音閾値を計測（必要なら利用）
     detector = ThresholdDetector(5)
     silence_threshold = detector.detect_threshold()
-    
-    library_path = "/path/to/porcupine/library"
-    model_path = "/path/to/porcupine/model"
-    keyword_paths = ["/path/to/porcupine/keyword"]
 
-    wake_detector = WakeWordDetector(library_path, model_path, keyword_paths, silence_threshold)
-    asyncio.run(wake_detector.run())
+    wake_detector = WakeWordDetector()
+    wake_detector.run()
