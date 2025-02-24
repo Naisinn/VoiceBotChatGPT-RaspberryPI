@@ -19,11 +19,40 @@ class InputListener:
         self.frames = []
 
     def start(self):
+        # 自動的に利用可能な入力デバイスを検索
+        available_devices = []
+        for i in range(self.audio.get_device_count()):
+            dev_info = self.audio.get_device_info_by_index(i)
+            if dev_info.get("maxInputChannels", 0) > 0:
+                available_devices.append((i, dev_info["name"]))
+        if not available_devices:
+            print("利用可能な入力デバイスが見つかりません。")
+            exit(1)
+        elif len(available_devices) == 1:
+            device_index = available_devices[0][0]
+            print(f"唯一の入力デバイス '{available_devices[0][1]}' (index: {device_index}) を使用します。")
+        else:
+            print("利用可能な入力デバイスが複数見つかりました:")
+            for idx, (dev_index, dev_name) in enumerate(available_devices):
+                print(f"{idx}: {dev_name} (index: {dev_index})")
+            while True:
+                try:
+                    selection = int(input("使用するデバイスの番号を入力してください: "))
+                    if 0 <= selection < len(available_devices):
+                        device_index = available_devices[selection][0]
+                        break
+                    else:
+                        print("無効な番号です。もう一度入力してください。")
+                except ValueError:
+                    print("数値を入力してください。")
+            print(f"選択されたデバイス: '{available_devices[selection][1]}' (index: {device_index})")
+        
         self.stream = self.audio.open(
             format=self.format,
             channels=self.channels,
             rate=self.rate,
             input=True,
+            input_device_index=device_index,
             frames_per_buffer=self.chunk,
         )
 
