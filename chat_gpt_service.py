@@ -1,5 +1,13 @@
 import asyncio
-asyncio.set_event_loop_policy(asyncio.DefaultEventLoopPolicy())
+# まず、BaseEventLoop.create_connection を monkey-patch して extra_headers を無視する
+_original_create_connection = asyncio.BaseEventLoop.create_connection
+
+def _create_connection_with_extra_headers(self, protocol_factory, host=None, port=None, **kwargs):
+    # extra_headers キーワードを削除してから呼び出す
+    kwargs.pop("extra_headers", None)
+    return _original_create_connection(self, protocol_factory, host, port, **kwargs)
+
+asyncio.BaseEventLoop.create_connection = _create_connection_with_extra_headers
 
 import json
 import websockets
@@ -10,7 +18,8 @@ import time
 # 設定読み込み
 config = json.load(open("config.json"))
 if "openai_org" in config:
-    # TODO: The 'openai.organization' option isn't read in the client API. You will need to pass it when you instantiate the client, e.g. 'OpenAI(organization=config["openai_org"])'
+    # TODO: The 'openai.organization' option isn't read in the client API.
+    # You will need to pass it when you instantiate the client, e.g. 'OpenAI(organization=config["openai_org"])'
     # openai.organization = config["openai_org"]
     pass
 
