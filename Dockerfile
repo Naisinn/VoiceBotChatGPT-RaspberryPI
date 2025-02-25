@@ -17,6 +17,9 @@ RUN apt-get update && apt-get install -y\
     libsdl2-ttf-dev \
     git \
     alsa-utils \
+    #コンテナ内でのネットワーク設定や DNS 解決の状態確認
+    iputils-ping \
+    dnsutils \
     && rm -rf /var/lib/apt/lists/*
 
 # 作業ディレクトリを設定
