@@ -6,3 +6,4 @@ pygame
 wave
 uuid
 websockets
+aiohttp

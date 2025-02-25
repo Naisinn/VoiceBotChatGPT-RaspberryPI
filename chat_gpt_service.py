@@ -40,7 +40,10 @@ class ChatGPTService:
         # ---------------------------
         # まず、セッション作成エンドポイントにPOSTし、エフェメラルトークンを取得する
         # ---------------------------
-        import aiohttp
+        try:
+            import aiohttp
+        except ModuleNotFoundError:
+            raise ModuleNotFoundError("aiohttpモジュールが見つかりません。'pip install aiohttp' を実行してください。")
         session_url = "https://api.openai.com/v1/realtime/sessions"
         session_payload = {
             "model": self.model,
@@ -76,6 +79,9 @@ class ChatGPTService:
                 "voice": "alloy",
                 "input_audio_format": "pcm16",
                 "output_audio_format": "pcm16",
+                "input_audio_transcription": {
+                    "model": "whisper-1"
+                },
                 "turn_detection": {
                     "type": "server_vad",
                     "threshold": 0.5,
@@ -83,6 +89,8 @@ class ChatGPTService:
                     "silence_duration_ms": 500,
                     "create_response": True
                 },
+                "tools": [],
+                "tool_choice": "none",
                 "temperature": 0.7,
                 "max_response_output_tokens": 200
             }
