@@ -1,16 +1,6 @@
 # chat_gpt_service.py
 
 import asyncio
-# まず、BaseEventLoop.create_connection を monkey-patch して extra_headers を無視する
-_original_create_connection = asyncio.BaseEventLoop.create_connection
-
-def _create_connection_with_extra_headers(self, protocol_factory, host=None, port=None, **kwargs):
-    # extra_headers キーワードを削除してから呼び出す
-    kwargs.pop("extra_headers", None)
-    return _original_create_connection(self, protocol_factory, host, port, **kwargs)
-
-asyncio.BaseEventLoop.create_connection = _create_connection_with_extra_headers
-
 import json
 import websockets
 import openai
@@ -27,8 +17,19 @@ if "openai_org" in config:
 
 class ChatGPTService:
     def __init__(self, prompt="You are a helpful assistant."):
-        self.history = [{"role": "system", "content": prompt}]
-        # Realtime API 用モデル指定（新しい接続例に合わせて更新）
+        # 初期システムメッセージは、Realtime API での会話アイテム形式に合わせる
+        self.history = [
+            {
+                "role": "system",
+                "content": [
+                    {
+                        "type": "input_text",
+                        "text": prompt
+                    }
+                ]
+            }
+        ]
+        # Realtime API 用モデル指定（最新のモデルを使用）
         self.model = "gpt-4o-realtime-preview-2024-12-17"
         self.ws = None
         self.session_id = None
@@ -60,17 +61,22 @@ class ChatGPTService:
         # セッションIDおよびエフェメラルトークンを取得
         self.session_id = session_response["id"]
         ephemeral_token = session_response["client_secret"]["value"]
+
         # ---------------------------
         # 取得したエフェメラルトークンを用いて WebSocket 接続を初期化する
         # ---------------------------
         realtime_api_url = "wss://api.openai.com/v1/realtime?model=" + self.model
-        ws_headers = [
-            "Authorization: Bearer " + ephemeral_token,
-            "OpenAI-Beta: realtime=v1"
-        ]
-        self.ws = await websockets.connect(realtime_api_url, extra_headers=ws_headers)
+        # 最新の websockets ライブラリでは additional_headers を使用する
+        ws_headers = {
+            "Authorization": "Bearer " + ephemeral_token,
+            "OpenAI-Beta": "realtime=v1"
+        }
+        self.ws = await websockets.connect(realtime_api_url, additional_headers=ws_headers)
         print("Connected to Realtime API.")
+
+        # ---------------------------
         # セッション更新イベントを送信（音声出力設定など）
+        # ---------------------------
         session_update = {
             "type": "session.update",
             "session": {
@@ -86,8 +92,7 @@ class ChatGPTService:
                     "type": "server_vad",
                     "threshold": 0.5,
                     "prefix_padding_ms": 300,
-                    "silence_duration_ms": 500,
-                    "create_response": True
+                    "silence_duration_ms": 500
                 },
                 "tools": [],
                 "tool_choice": "none",
@@ -99,30 +104,58 @@ class ChatGPTService:
         print("Session updated with audio output settings.")
 
     async def send_message(self, message, input_type="text"):
-        # ユーザー入力を履歴に追加
-        self.history.append({"role": "user", "content": message, "input_type": input_type})
-        request = {
-            "model": self.model,
-            "messages": self.history,
-            "input_type": input_type
+        # ユーザーからのメッセージは、Realtime API の会話アイテム作成イベントとして送信する
+        if input_type == "audio":
+            # 音声の場合は、message は Base64 エンコード済みの音声データが想定される
+            content = [{
+                "type": "input_audio",
+                "audio": message
+            }]
+        else:
+            content = [{
+                "type": "input_text",
+                "text": message
+            }]
+
+        event_payload = {
+            "type": "conversation.item.create",
+            "item": {
+                "role": "user",
+                "content": content
+            }
         }
-        await self.ws.send(json.dumps(request))
+        await self.ws.send(json.dumps(event_payload))
+        # 応答は複数のストリーミングイベントとして返されるが、ここでは response.text.done イベントを待機して最終的なテキストを取得する例です
         response = await self.ws.recv()
         response_json = json.loads(response)
-        # 音声入力の場合は "audio" フィールドに応答が入る（Base64 文字列）
-        if input_type == "audio" and "audio" in response_json:
+        if response_json.get("type") == "response.text.done":
+            assistant_text = response_json.get("text", "")
+            # 会話履歴に追加
+            self.history.append({
+                "role": "assistant",
+                "content": [{
+                    "type": "text",
+                    "text": assistant_text
+                }]
+            })
+            return assistant_text
+        elif input_type == "audio" and "audio" in response_json:
             return response_json["audio"]
         else:
-            assistant_msg = response_json.get("choices", [{}])[0].get("message", {}).get("content", "")
-            self.history.append({"role": "assistant", "content": assistant_msg})
-            return assistant_msg
+            return response_json
 
     def send_to_chat_gpt(self, message, input_type="text"):
         if self.ws is None:
             self.loop.run_until_complete(self.connect())
-        # 同期版のラッパー。send_message() を self.loop.run_until_complete 経由で呼び出す
+        # 同期版のラッパー。send_message() を run_until_complete 経由で呼び出す
         return self.loop.run_until_complete(self.send_message(message, input_type))
 
     async def close(self):
         if self.ws:
             await self.ws.close()
+
+if __name__ == "__main__":
+    # 例として、テキストメッセージを送信
+    service = ChatGPTService("You are a helpful assistant.")
+    response = service.send_to_chat_gpt("こんにちは、調子はどうですか？")
+    print("Assistant:", response)
