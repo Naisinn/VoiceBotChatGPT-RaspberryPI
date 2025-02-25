@@ -1,5 +1,3 @@
-# chat_gpt_service.py
-
 import asyncio
 import json
 import websockets
@@ -103,7 +101,7 @@ class ChatGPTService:
         await self.ws.send(json.dumps(session_update))
         print("Session updated with audio output settings.")
 
-    async def send_message(self, message, input_type="text"):
+    async def send_message(self, message, input_type="text", output_audio=False):
         # ユーザーからのメッセージは、Realtime API の会話アイテム作成イベントとして送信する
         if input_type == "audio":
             # 音声の場合は、message は Base64 エンコード済みの音声データが想定される
@@ -125,30 +123,43 @@ class ChatGPTService:
             }
         }
         await self.ws.send(json.dumps(event_payload))
-        # 応答は複数のストリーミングイベントとして返されるが、ここでは response.text.done イベントを待機して最終的なテキストを取得する例です
-        response = await self.ws.recv()
-        response_json = json.loads(response)
-        if response_json.get("type") == "response.text.done":
-            assistant_text = response_json.get("text", "")
-            # 会話履歴に追加
-            self.history.append({
-                "role": "assistant",
-                "content": [{
-                    "type": "text",
-                    "text": assistant_text
-                }]
-            })
-            return assistant_text
-        elif input_type == "audio" and "audio" in response_json:
-            return response_json["audio"]
+        if output_audio:
+            # 音声応答が返ってくるまで待機
+            while True:
+                response = await self.ws.recv()
+                response_json = json.loads(response)
+                if "audio" in response_json:
+                    audio_data = response_json["audio"]
+                    self.history.append({
+                        "role": "assistant",
+                        "content": [{
+                            "type": "audio",
+                            "audio": audio_data
+                        }]
+                    })
+                    return audio_data
         else:
-            return response_json
+            response = await self.ws.recv()
+            response_json = json.loads(response)
+            if response_json.get("type") == "response.text.done":
+                assistant_text = response_json.get("text", "")
+                # 会話履歴に追加
+                self.history.append({
+                    "role": "assistant",
+                    "content": [{
+                        "type": "text",
+                        "text": assistant_text
+                    }]
+                })
+                return assistant_text
+            else:
+                return response_json
 
-    def send_to_chat_gpt(self, message, input_type="text"):
+    def send_to_chat_gpt(self, message, input_type="text", output_audio=False):
         if self.ws is None:
             self.loop.run_until_complete(self.connect())
         # 同期版のラッパー。send_message() を run_until_complete 経由で呼び出す
-        return self.loop.run_until_complete(self.send_message(message, input_type))
+        return self.loop.run_until_complete(self.send_message(message, input_type, output_audio))
 
     async def close(self):
         if self.ws:

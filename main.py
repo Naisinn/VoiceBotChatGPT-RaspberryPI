@@ -1,5 +1,3 @@
-# main.py
-
 import json
 from chat_gpt_service import ChatGPTService
 from input_listener import InputListener
@@ -16,6 +14,15 @@ client_instance = OpenAI(api_key=config["openai_key"])
 if "openai_org" in config:
     # 組織情報は新しいクライアントでは明示的に渡す必要がありますが、必要なければここは pass してください
     pass
+
+def play_audio(audio_data):
+    import pyaudio
+    p = pyaudio.PyAudio()
+    stream = p.open(format=pyaudio.paInt16, channels=1, rate=16000, output=True)
+    stream.write(audio_data)
+    stream.stop_stream()
+    stream.close()
+    p.terminate()
 
 class WakeWordDetector:
     def __init__(self):
@@ -50,11 +57,10 @@ class WakeWordDetector:
             # イベントループの不整合を避けるため、直前に ChatGPTService のインスタンスを生成
             chat_gpt_service = ChatGPTService()
             # transcription はオブジェクトなので、属性 text を使用して文字列を取得
-            response = chat_gpt_service.send_to_chat_gpt(transcription.text)
-            print("ChatGPT response:", response)
+            response = chat_gpt_service.send_to_chat_gpt(transcription.text, output_audio=True)
+            print("ChatGPT response received.")
             print("Playing response...")
-            # TTS機能は使用しないため、以下の行は削除します。
-            # self.speech.speak(response)
+            play_audio(response)
             os.remove(audio_path)
             print("Audio session completed. Press Enter to start again, or type 'exit' to quit.")
 
@@ -65,3 +71,56 @@ if __name__ == "__main__":
 
     wake_detector = WakeWordDetector()
     wake_detector.run()
+
+
+
+import time
+import audioop
+import pyaudio
+
+class ThresholdDetector:
+    def __init__(self, sample_duration=5):
+        self.chunk = 1024
+        self.format = pyaudio.paInt16
+        self.channels = 1
+        self.rate = 16000
+        self.sample_duration = sample_duration
+        self.audio = pyaudio.PyAudio()
+
+    def start(self):
+        self.stream = self.audio.open(
+            format=self.format,
+            channels=self.channels,
+            rate=self.rate,
+            input=True,
+            frames_per_buffer=self.chunk,
+        )
+
+    def stop(self):
+        self.stream.stop_stream()
+        self.stream.close()
+        self.audio.terminate()
+
+    def detect_threshold(self):
+        self.start()
+        rms_values = []
+        start_time = time.time()
+        print("Start detecting threshold...")
+        while True:
+            data = self.stream.read(self.chunk)
+            rms = audioop.rms(data, 2)
+            print(f"RMS value: {rms}")
+            rms_values.append(rms)
+            if time.time() - start_time > self.sample_duration:
+                print("Sample duration completed, stop detecting")
+                break
+        self.stop()
+
+        # Calculate the average RMS value as the silence threshold
+        average_rms = sum(rms_values) / len(rms_values)
+        print(f"The average RMS value is {average_rms}")
+        return average_rms
+
+if __name__ == "__main__":
+    detector = ThresholdDetector()
+    silence_threshold = detector.detect_threshold()
