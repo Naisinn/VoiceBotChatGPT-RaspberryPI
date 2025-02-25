@@ -1,3 +1,5 @@
+# input_listener.py
+
 import time
 import audioop
 import pyaudio
@@ -19,6 +21,12 @@ class InputListener:
         self.frames = []
 
     def start(self):
+        # self.audio が有効かチェック。既に terminate されている場合は再初期化する
+        try:
+            self.audio.get_device_count()
+        except Exception:
+            self.audio = pyaudio.PyAudio()
+        
         # 自動的に利用可能な入力デバイスを検索
         available_devices = []
         for i in range(self.audio.get_device_count()):
