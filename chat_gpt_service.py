@@ -7,6 +7,7 @@ import openai
 import os
 import time
 import base64
+import pyaudio
 
 # 設定読み込み
 config = json.load(open("config.json"))
@@ -37,6 +38,9 @@ class ChatGPTService:
         # ここで専用のイベントループを生成し、以降の非同期処理で使用する
         self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self.loop)
+        # Persistent PyAudio instance and output stream for streaming playback
+        self.pyaudio_instance = pyaudio.PyAudio()
+        self.audio_stream = None
 
     async def connect(self):
         # ---------------------------
@@ -103,6 +107,9 @@ class ChatGPTService:
         }
         await self.ws.send(json.dumps(session_update))
         print("Session updated with audio output settings.")
+        
+        # Open a persistent PyAudio stream for output audio streaming
+        self.audio_stream = self.pyaudio_instance.open(format=pyaudio.paInt16, channels=1, rate=16000, output=True)
 
     async def send_message(self, message, input_type="text", output_audio=False):
         # ユーザーからのメッセージは、Realtime API の会話アイテム作成イベントとして送信する
@@ -136,7 +143,8 @@ class ChatGPTService:
                     "instructions": "Please answer with both text and audio."
                 }
             }))
-            audio_data = b""
+            full_audio_data = b""
+            # 双方向ストリーミング：受信した音声チャンクを即時再生しながらバッファに蓄積する
             while True:
                 try:
                     response = await self.ws.recv()
@@ -144,18 +152,22 @@ class ChatGPTService:
                     break
                 response_json = json.loads(response)
                 if response_json.get("type") == "response.audio.delta":
-                    audio_data += base64.b64decode(response_json.get("delta"))
+                    chunk = base64.b64decode(response_json.get("delta"))
+                    full_audio_data += chunk
+                    # 再生用の persistent stream に書き込み
+                    self.audio_stream.write(chunk)
                 if response_json.get("type") == "response.audio.done":
-                    if audio_data:
+                    if full_audio_data:
                         self.history.append({
                             "role": "assistant",
                             "content": [{
                                 "type": "audio",
-                                "audio": audio_data.decode("latin1")  # そのままバイナリを扱う場合は適宜調整してください
+                                "audio": full_audio_data.decode("latin1")
                             }]
                         })
                     break
-            return audio_data
+            # 返却値は空にする（すでにリアルタイム再生済み）
+            return b""
         else:
             response = await self.ws.recv()
             response_json = json.loads(response)
@@ -182,6 +194,10 @@ class ChatGPTService:
     async def close(self):
         if self.ws:
             await self.ws.close()
+        if self.audio_stream:
+            self.audio_stream.stop_stream()
+            self.audio_stream.close()
+        self.pyaudio_instance.terminate()
 
 if __name__ == "__main__":
     # 例として、テキストメッセージを送信

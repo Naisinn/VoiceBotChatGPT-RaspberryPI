@@ -62,10 +62,10 @@ class WakeWordDetector:
             # イベントループの不整合を避けるため、直前に ChatGPTService のインスタンスを生成
             chat_gpt_service = ChatGPTService()
             # transcription はオブジェクトなので、属性 text を使用して文字列を取得
+            # 双方向ストリーミングの場合、送信後はAPI側から連続して音声チャンクが再生されます。
             response = chat_gpt_service.send_to_chat_gpt(transcription.text, output_audio=True)
             print("ChatGPT response received.")
-            print("Playing response...")
-            play_audio(response)
+            # ※音声はリアルタイム再生済みのため、再生呼び出しは削除しています。
             os.remove(audio_path)
             print("Audio session completed. Press Enter to start again, or type 'exit' to quit.")
 
