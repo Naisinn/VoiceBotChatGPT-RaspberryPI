@@ -124,9 +124,12 @@ class ChatGPTService:
         }
         await self.ws.send(json.dumps(event_payload))
         if output_audio:
-            # 音声応答が返ってくるまで待機
+            audio_data = None
             while True:
-                response = await self.ws.recv()
+                try:
+                    response = await self.ws.recv()
+                except websockets.exceptions.ConnectionClosedOK:
+                    break
                 response_json = json.loads(response)
                 if "audio" in response_json:
                     audio_data = response_json["audio"]
@@ -137,7 +140,8 @@ class ChatGPTService:
                             "audio": audio_data
                         }]
                     })
-                    return audio_data
+                    break
+            return audio_data
         else:
             response = await self.ws.recv()
             response_json = json.loads(response)

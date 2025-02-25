@@ -16,6 +16,9 @@ if "openai_org" in config:
     pass
 
 def play_audio(audio_data):
+    if audio_data is None:
+        print("音声データが返ってこなかったため、再生をスキップします。")
+        return
     import pyaudio
     p = pyaudio.PyAudio()
     stream = p.open(format=pyaudio.paInt16, channels=1, rate=16000, output=True)
