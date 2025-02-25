@@ -26,7 +26,8 @@ class WakeWordDetector:
             config["silence_threshold"],
             config["silence_duration"]
         )
-        # Precise 関連の初期化は削除（またはコメントアウト）
+        # TTS機能はRealtime APIの返答で音声データが返されるため、外部TTSの呼び出しは不要です。
+        # そのため、self.speech に関する初期化は削除します。
 
     def run(self):
         print("Precise wake word detection is disabled.")
@@ -52,7 +53,8 @@ class WakeWordDetector:
             response = chat_gpt_service.send_to_chat_gpt(transcription.text)
             print("ChatGPT response:", response)
             print("Playing response...")
-            self.speech.speak(response)
+            # TTS機能は使用しないため、以下の行は削除します。
+            # self.speech.speak(response)
             os.remove(audio_path)
             print("Audio session completed. Press Enter to start again, or type 'exit' to quit.")
 
