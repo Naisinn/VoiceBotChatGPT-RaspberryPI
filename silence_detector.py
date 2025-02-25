@@ -1,3 +1,5 @@
+#silence_detector.py
+
 import time
 import audioop
 import pyaudio
