@@ -20,7 +20,8 @@ if "openai_org" in config:
 class WakeWordDetector:
     def __init__(self):
         # Picovoice/Precise は使用せず、キーボード入力でトリガーする実装に変更
-        self.chat_gpt_service = ChatGPTService()
+        # 以下のインスタンス生成を削除（イベントループの不整合を避けるため）
+        # self.chat_gpt_service = ChatGPTService()
         self.listener = InputListener(
             config["silence_threshold"],
             config["silence_duration"]
@@ -45,8 +46,10 @@ class WakeWordDetector:
                 )
             print("Transcript:", transcription)
             print("Sending to ChatGPT...")
+            # イベントループの不整合を避けるため、直前に ChatGPTService のインスタンスを生成
+            chat_gpt_service = ChatGPTService()
             # transcription はオブジェクトなので、属性 text を使用して文字列を取得
-            response = self.chat_gpt_service.send_to_chat_gpt(transcription.text)
+            response = chat_gpt_service.send_to_chat_gpt(transcription.text)
             print("ChatGPT response:", response)
             print("Playing response...")
             self.speech.speak(response)

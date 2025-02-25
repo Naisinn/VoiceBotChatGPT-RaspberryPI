@@ -1,3 +1,5 @@
+# chat_gpt_service.py
+
 import asyncio
 # まず、BaseEventLoop.create_connection を monkey-patch して extra_headers を無視する
 _original_create_connection = asyncio.BaseEventLoop.create_connection
@@ -29,6 +31,9 @@ class ChatGPTService:
         # Realtime API 用モデル指定
         self.model = "gpt-4o-mini-realtime-preview-2024-12-17"
         self.ws = None
+        # ここで専用のイベントループを生成し、以降の非同期処理で使用する
+        self.loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self.loop)
 
     async def connect(self):
         # Realtime API の WebSocket エンドポイント（最新のドキュメントに合わせて変更してください）
@@ -63,9 +68,9 @@ class ChatGPTService:
 
     def send_to_chat_gpt(self, message, input_type="text"):
         if self.ws is None:
-            asyncio.run(self.connect())
-        # 同期版のラッパー。send_message() を asyncio.run() 経由で呼び出す
-        return asyncio.run(self.send_message(message, input_type))
+            self.loop.run_until_complete(self.connect())
+        # 同期版のラッパー。send_message() を self.loop.run_until_complete 経由で呼び出す
+        return self.loop.run_until_complete(self.send_message(message, input_type))
 
     async def close(self):
         if self.ws:
