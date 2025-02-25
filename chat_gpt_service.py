@@ -4,6 +4,7 @@ import websockets
 import openai
 import os
 import time
+import base64
 
 # 設定読み込み
 config = json.load(open("config.json"))
@@ -124,22 +125,33 @@ class ChatGPTService:
         }
         await self.ws.send(json.dumps(event_payload))
         if output_audio:
-            audio_data = None
+            # ★ 修正箇所 ★
+            # 音声出力を得るために、response.create イベントを送信する際、指示文で明示的に音声出力も求める
+            await self.ws.send(json.dumps({
+                "type": "response.create",
+                "response": {
+                    "modalities": ["audio", "text"],
+                    "instructions": "Please answer with both text and audio."
+                }
+            }))
+            audio_data = b""
             while True:
                 try:
                     response = await self.ws.recv()
                 except websockets.exceptions.ConnectionClosedOK:
                     break
                 response_json = json.loads(response)
-                if "audio" in response_json:
-                    audio_data = response_json["audio"]
-                    self.history.append({
-                        "role": "assistant",
-                        "content": [{
-                            "type": "audio",
-                            "audio": audio_data
-                        }]
-                    })
+                if response_json.get("type") == "response.audio.delta":
+                    audio_data += base64.b64decode(response_json.get("delta"))
+                if response_json.get("type") == "response.audio.done":
+                    if audio_data:
+                        self.history.append({
+                            "role": "assistant",
+                            "content": [{
+                                "type": "audio",
+                                "audio": audio_data.decode("latin1")  # そのままバイナリを扱う場合は適宜調整してください
+                            }]
+                        })
                     break
             return audio_data
         else:
