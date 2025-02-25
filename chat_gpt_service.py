@@ -50,21 +50,33 @@ class ChatGPTService:
     async def send_message(self, message, input_type="text"):
         # ユーザー入力を履歴に追加
         self.history.append({"role": "user", "content": message, "input_type": input_type})
+        # ユーザーの発言を表す会話アイテム作成イベント
         request = {
-            "model": self.model,
-            "messages": self.history,
-            "input_type": input_type
+            "type": "conversation.item.create",
+            "item": {
+                "role": "user",
+                "content": [
+                    {"type": "input_text", "text": message}
+                ]
+            }
         }
         await self.ws.send(json.dumps(request))
+        # アシスタントからの応答を促すため、response.create イベントを送信
+        trigger = {
+            "type": "response.create",
+            "response": {
+                "modalities": ["text"],
+                "instructions": "Please assist the user."
+            }
+        }
+        await self.ws.send(json.dumps(trigger))
+        # 応答イベントを受信する
         response = await self.ws.recv()
         response_json = json.loads(response)
-        # 音声入力の場合は "audio" フィールドに応答が入る（Base64 文字列）
-        if input_type == "audio" and "audio" in response_json:
-            return response_json["audio"]
-        else:
-            assistant_msg = response_json.get("choices", [{}])[0].get("message", {}).get("content", "")
-            self.history.append({"role": "assistant", "content": assistant_msg})
-            return assistant_msg
+        # 応答形式は API の仕様により変動するため、ここでは仮に "message" フィールドからテキストを抽出
+        assistant_msg = response_json.get("message", "")
+        self.history.append({"role": "assistant", "content": assistant_msg})
+        return assistant_msg
 
     def send_to_chat_gpt(self, message, input_type="text"):
         if self.ws is None:
