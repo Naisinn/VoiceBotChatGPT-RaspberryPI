@@ -28,25 +28,46 @@ if "openai_org" in config:
 class ChatGPTService:
     def __init__(self, prompt="You are a helpful assistant."):
         self.history = [{"role": "system", "content": prompt}]
-        # Realtime API 用モデル指定
-        self.model = "gpt-4o-mini-realtime-preview-2024-12-17"
+        # Realtime API 用モデル指定（新しい接続例に合わせて更新）
+        self.model = "gpt-4o-realtime-preview-2024-12-17"
         self.ws = None
+        self.session_id = None
         # ここで専用のイベントループを生成し、以降の非同期処理で使用する
         self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self.loop)
 
     async def connect(self):
-        # Realtime API の WebSocket エンドポイント（最新のドキュメントに合わせて変更してください）
-        realtime_api_url = "wss://api.openai.com/v1/realtime"
-        headers = {
-            "Authorization": f"Bearer {config['openai_key']}",
+        # ---------------------------
+        # まず、セッション作成エンドポイントにPOSTし、エフェメラルトークンを取得する
+        # ---------------------------
+        import aiohttp
+        session_url = "https://api.openai.com/v1/realtime/sessions"
+        session_payload = {
+            "model": self.model,
+            "modalities": ["audio", "text"],
+            "instructions": "You are a friendly assistant."
+        }
+        headers_http = {
+            "Authorization": "Bearer " + config['openai_key'],
             "Content-Type": "application/json"
         }
-        # extra_headers をリスト形式に変換して渡す
-        headers_list = list(headers.items())
-        self.ws = await websockets.connect(realtime_api_url, extra_headers=headers_list)
+        async with aiohttp.ClientSession() as session:
+            async with session.post(session_url, headers=headers_http, json=session_payload) as resp:
+                session_response = await resp.json()
+        # セッションIDおよびエフェメラルトークンを取得
+        self.session_id = session_response["id"]
+        ephemeral_token = session_response["client_secret"]["value"]
+        # ---------------------------
+        # 取得したエフェメラルトークンを用いて WebSocket 接続を初期化する
+        # ---------------------------
+        realtime_api_url = "wss://api.openai.com/v1/realtime?model=" + self.model
+        ws_headers = [
+            "Authorization: Bearer " + ephemeral_token,
+            "OpenAI-Beta: realtime=v1"
+        ]
+        self.ws = await websockets.connect(realtime_api_url, extra_headers=ws_headers)
         print("Connected to Realtime API.")
-        # セッション更新イベントを送信（音声出力設定を含む）
+        # セッション更新イベントを送信（音声出力設定など）
         session_update = {
             "type": "session.update",
             "session": {
@@ -59,9 +80,11 @@ class ChatGPTService:
                     "type": "server_vad",
                     "threshold": 0.5,
                     "prefix_padding_ms": 300,
-                    "silence_duration_ms": 500
+                    "silence_duration_ms": 500,
+                    "create_response": True
                 },
-                "temperature": 0.7
+                "temperature": 0.7,
+                "max_response_output_tokens": 200
             }
         }
         await self.ws.send(json.dumps(session_update))
